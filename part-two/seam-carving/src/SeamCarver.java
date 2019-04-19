@@ -1,5 +1,21 @@
+package src;
+
 import edu.princeton.cs.algs4.Picture;
 
+/**
+ * The {@code SeamCarver} class represents a solution to
+ * <a href=http://coursera.cs.princeton.edu/algs4/assignments/seam.html>seam carving</a> problem.
+ * Develop a seam carving, content-aware image scaling.
+ * Program allows both vertical and horizontal seam carving. In order to support these operations,
+ * it fully implements vertical SC; for horizontal SC, program transposes picture and treats it
+ * as a vertical, quite elegantly reducing duplicate code.
+ * However, API assumes that picture always remains in given orientation, and public methods
+ * should restore its original state (if necessary).
+ * Score: 100/100
+ *
+ * @author andrhua
+ * @version Thank you, Dark souls.
+ */
 public class SeamCarver {
     private double[][] energy;
     private double[][] distTo;
@@ -9,6 +25,12 @@ public class SeamCarver {
     private int width;
     private int height;
 
+    /**
+     * Converts {@code Picture} instance to 2D int array,
+     * calculates energy grid to be used for searching minimal seam.
+     * @param picture image to be scaled
+     * @throws IllegalArgumentException if {@code picture} is null
+     */
     public SeamCarver(Picture picture) {
         validateArg(picture);
         this.width = picture.width();
@@ -27,6 +49,10 @@ public class SeamCarver {
         }
     }
 
+    /**
+     * Returns new {@code Picture} from 2D pixel array.
+     * @return new {@code Picture} from 2D pixel array
+     */
     public Picture picture() {
         if (isTransposed)
             transpose();
@@ -38,14 +64,28 @@ public class SeamCarver {
         return picture;
     }
 
+    /**
+     * Returns current {@code Picture} width.
+     * @return current {@code Picture} width
+     */
     public int width() {
         return isTransposed ? height : width;
     }
 
+    /**
+     * Returns current {@code Picture} height.
+     * @return current {@code Picture} height
+     */
     public int height() {
         return isTransposed ? width : height;
     }
 
+    /**
+     * Returns energy value at ({@param x}, {@param y}) pixel.
+     * @param x width value
+     * @param y height value
+     * @return energy value at ({@param x}, {@param y}) pixel
+     */
     public double energy(int x, int y) {
         if (isTransposed) {
             int tmp = x;
@@ -57,18 +97,34 @@ public class SeamCarver {
         return energy[y][x];
     }
 
+    /**
+     * Returns a minimal horizontal seam.
+     * @return a minimal horizontal seam
+     */
     public int[] findHorizontalSeam() {
-        return findVerticalSeam(true);
+        return findSeam(true);
     }
 
+    /**
+     * Returns a minimal vertical seam.
+     * @return a minimal vertical seam
+     */
     public int[] findVerticalSeam() {
-        return findVerticalSeam(false);
+        return findSeam(false);
     }
 
-    private int[] findVerticalSeam(boolean fromHorizontal) {
-        if (fromHorizontal != isTransposed) transpose();
+    /**
+     * Returns a minimal vertical seam relatively to current orientation
+     * by calculating shortest path in picture's energy graph.
+     * @param isHorizontal whether seam meant to be horizontal
+     * @return a minimal vertical seam relatively to current orientation
+     */
+    private int[] findSeam(boolean isHorizontal) {
+        if (isHorizontal != isTransposed)
+            transpose();
         initHelperArrays();
         topologicalRelaxation();
+        // after relaxation, we need to find minimal distance in last row of pixels
         double min = Double.POSITIVE_INFINITY;
         int xMin = 0;
         for (int x = 0; x < width; x++) {
@@ -77,27 +133,50 @@ public class SeamCarver {
                 xMin = x;
             }
         }
-        distTo = null;
+        // and build path from that pixel to the top of image.
         int[] seam = new int[height];
         int y = height;
         while (y > 0) {
             seam[--y] = xMin;
             xMin = edgeTo[xMin][y];
         }
+        // prevent loitering
+        distTo = null;
         edgeTo = null;
         return seam;
     }
 
+    /**
+     * Removes given horizontal {@param seam} from picture.
+     * @param seam array of y-indices corresponding to
+     *             every column, where any two adjacent
+     *             elements differs at max by 1
+     */
     public void removeHorizontalSeam(int[] seam) {
-        removeVerticalSeam(seam, true);
+        removeSeam(seam, true);
     }
 
+    /**
+     * Removes given vertical {@param seam} from picture.
+     * @param seam array of x-indices corresponding to
+     *             every row, where any two adjacent
+     *             elements differs at max by 1
+     */
     public void removeVerticalSeam(int[] seam) {
-        removeVerticalSeam(seam, false);
+        removeSeam(seam, false);
     }
 
-    private void removeVerticalSeam(int[] seam, boolean fromHorizontal) {
-        if (fromHorizontal != isTransposed) transpose();
+    /**
+     * Removes a vertical seam relatively to current orientation.
+     * In every row shifts pixels on right side of the seam to fill in gaps
+     * and recalculates energy values along this seam.
+     * @param seam array of y-indices (relatively to current orientation)
+     * @param isHorizontal whether seam meant to be horizontal
+     * @throws IllegalArgumentException if seam is not correct
+     * or if picture has the only column left
+     */
+    private void removeSeam(int[] seam, boolean isHorizontal) {
+        restoreOrientation(isHorizontal);
         if (width <= 1) throw new IllegalArgumentException();
         validateSeam(seam);
         for (int y = 0; y < height; y++) {
@@ -114,6 +193,9 @@ public class SeamCarver {
         }
     }
 
+    /**
+     * Runs a topological sort on picture's energy grid
+     */
     private void topologicalRelaxation() {
         for (int y = 0; y < height - 1; y++) {
             for (int x = 0; x < width; x++) {
@@ -124,6 +206,9 @@ public class SeamCarver {
         }
     }
 
+    /**
+     * Relaxes a vertex ({@code toX}, {@code toY})
+     */
     private void relax(int fromX, int fromY, int toX, int toY) {
         if (distTo[toX][toY] > distTo[fromX][fromY] + energy[toY][toX]) {
             distTo[toX][toY] = distTo[fromX][fromY] + energy[toY][toX];
@@ -131,12 +216,31 @@ public class SeamCarver {
         }
     }
 
+    /**
+     * If {@param isHorizontal} XOR {@code isTransposed} equals 1, it means
+     * that pixel matrix should be transposed before any processing.
+     */
+    private void restoreOrientation(boolean isHorizontal) {
+        if (isHorizontal != isTransposed) transpose();
+    }
+
+    /**
+     * Calculates energy at given pixel. Boundary row and columns has energy of 1000,
+     * which is knowingly more than any internal pixel's energy, thereby excluding
+     * themselves from any minimal seam.
+     */
     private double calculateEnergy(int x, int y) {
         return x > 0 && x < width - 1 && y > 0 && y < height - 1
                 ? Math.sqrt(dS(grid[y][x + 1], grid[y][x - 1]) + dS(grid[y - 1][x], grid[y + 1][x]))
                 : 1000;
     }
 
+    /**
+     * Optimized calculation of sum of squared color channels deltas.
+     * {@param a} and {@param b} are integers with encoded channel values:
+     * first octet of bits is red, second 8 is green, third 8 is blue (or vice versa, does not matter).
+     * In loop program extracts unsigned 8 bits of every color and calculates delta, squares it and sums.
+     */
     private int dS(int a, int b) {
         int s = 0;
         for (int i = 16; i >= 0; i -= 8) {
@@ -145,6 +249,7 @@ public class SeamCarver {
         }
         return s;
     }
+
 
     private void initHelperArrays() {
         distTo = new double[width][height];
@@ -156,6 +261,11 @@ public class SeamCarver {
                         : Double.POSITIVE_INFINITY;
     }
 
+    /**
+     * Transposes pixel and energy matrices, exchanges metrics values.
+     * {@code removeSeam} does not actually resize array,
+     * it happens here with creation of new one.
+     */
     private void transpose() {
         isTransposed = !isTransposed;
         int[][] g = new int[width][height];
@@ -173,16 +283,29 @@ public class SeamCarver {
         height = tmp;
     }
 
+    /**
+     * @throws IllegalArgumentException if {@param x} is not within width range
+     */
     private void validateX(int x) {
         if (0 > x || x >= width)
             throw new IllegalArgumentException();
     }
 
+    /**
+     * @throws IllegalArgumentException if {@param   y} is not within height range
+     */
     private void validateY(int y) {
         if (0 > y || y >= height)
             throw new IllegalArgumentException();
     }
 
+    /**
+     * Validates correctness of vertical {@param seam}:
+     * length of array equals height of current picture,
+     * every value within picture's width,
+     * any two adjacent values differs at max by 1.
+     * @throws IllegalArgumentException if any of those constraints is violated.
+     */
     private void validateSeam(int[] seam) {
         validateArg(seam);
         if (seam.length != height)
@@ -196,6 +319,9 @@ public class SeamCarver {
         }
     }
 
+    /**
+     * @throws IllegalArgumentException if argument is null.
+     */
     private void validateArg(Object arg) {
         if (arg == null)
             throw new IllegalArgumentException();
